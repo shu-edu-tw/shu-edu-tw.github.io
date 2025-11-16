@@ -1,28 +1,28 @@
 // Service Worker for Caching
 // ==========================
 
-const CACHE_NAME = 'shu-website-v2';
+const CACHE_NAME = 'shu-website-v3';
 const urlsToCache = [
-    '/home/',
-    '/home/index.html',
-    '/home/css/style.css',
-    '/home/js/main.js',
-    '/home/js/performance.js',
-    '/home/images/shu-logo.webp',
-    '/home/images/Banner.webp',
-    '/home/pages/about.html',
-    '/home/pages/academics.html',
-    '/home/pages/admissions.html',
-    '/home/pages/alumni.html',
-    '/home/pages/campus-life.html',
-    '/home/pages/contact.html',
-    '/home/pages/courses.html',
-    '/home/pages/faculty.html',
-    '/home/pages/news.html',
-    '/home/news/2024-10-04-marshall-president-visit.html',
-    '/home/news/2024-10-08-printing-gold-award.html',
-    '/home/news/2024-10-11-golden-harvest-award.html',
-    '/home/news/2024-10-18-campus-recruitment.html'
+    '/',
+    '/index.html',
+    '/css/style.css',
+    '/js/main.js',
+    '/js/performance.js',
+    '/images/shu-logo.webp',
+    '/images/Banner.webp',
+    '/pages/about.html',
+    '/pages/academics.html',
+    '/pages/admissions.html',
+    '/pages/alumni.html',
+    '/pages/campus-life.html',
+    '/pages/contact.html',
+    '/pages/courses.html',
+    '/pages/faculty.html',
+    '/pages/news.html',
+    '/news/2024-10-04-marshall-president-visit.html',
+    '/news/2024-10-08-printing-gold-award.html',
+    '/news/2024-10-11-golden-harvest-award.html',
+    '/news/2024-10-18-campus-recruitment.html'
 ];
 
 // Install event
