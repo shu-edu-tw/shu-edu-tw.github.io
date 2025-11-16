@@ -56,22 +56,25 @@ function initNavigation() {
                 }
             }
             
-            if (navMenu.classList.contains('active')) {
+            if (navMenu && navMenu.classList.contains('active')) {
                 navMenu.classList.remove('active');
-                navToggle.classList.remove('active');
+                if (navToggle) navToggle.classList.remove('active');
                 
                 // Reset hamburger menu
-                const bars = navToggle.querySelectorAll('.bar');
-                bars.forEach(bar => {
-                    bar.style.transform = 'none';
-                    bar.style.opacity = '1';
-                });
+                if (navToggle) {
+                    const bars = navToggle.querySelectorAll('.bar');
+                    bars.forEach(bar => {
+                        bar.style.transform = 'none';
+                        bar.style.opacity = '1';
+                    });
+                }
             }
         });
     });
     
     // Close mobile menu when clicking outside
     document.addEventListener('click', function(e) {
+        if (!navToggle || !navMenu) return;
         if (!navToggle.contains(e.target) && !navMenu.contains(e.target)) {
             if (navMenu.classList.contains('active')) {
                 navMenu.classList.remove('active');
@@ -93,6 +96,7 @@ function initNavigation() {
     // Navbar background on scroll
     window.addEventListener('scroll', function() {
         const header = document.querySelector('.header');
+        if (!header) return;
         if (window.scrollY > 100) {
             header.classList.add('scrolled');
         } else {
@@ -105,11 +109,15 @@ function initNavigation() {
 function highlightActiveNav() {
     const navLinks = document.querySelectorAll('.nav-link');
     const currentPath = window.location.pathname;
+    const fileName = (currentPath === '/' || currentPath === '')
+        ? 'index.html'
+        : currentPath.split('/').pop();
     
     navLinks.forEach(link => {
         link.classList.remove('active');
-        if (link.getAttribute('href') === currentPath || 
-            (currentPath === '/' && link.getAttribute('href') === 'index.html')) {
+        const href = link.getAttribute('href') || '';
+        const hrefFile = href.split('?')[0].split('#')[0].split('/').pop();
+        if (hrefFile === fileName) {
             link.classList.add('active');
         }
     });
