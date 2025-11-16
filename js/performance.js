@@ -13,8 +13,8 @@ document.addEventListener('DOMContentLoaded', function() {
 // Preload critical resources
 function preloadCriticalResources() {
     const criticalImages = [
-        'images/Banner.jpg',
-        'images/shu-logo.png'
+        'images/Banner.webp',
+        'images/shu-logo.webp'
     ];
     
     criticalImages.forEach(src => {
@@ -87,13 +87,7 @@ if ('serviceWorker' in navigator) {
 function loadThirdPartyScripts() {
     // Delay loading of non-critical scripts
     setTimeout(() => {
-        // Load analytics after initial page load
-        if (typeof gtag !== 'undefined') {
-            gtag('event', 'page_view', {
-                page_title: document.title,
-                page_location: window.location.href
-            });
-        }
+        // Reserved for deferred third-party scripts if needed
     }, 2000);
 }
 

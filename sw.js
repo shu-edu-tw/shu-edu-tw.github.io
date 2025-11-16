@@ -1,10 +1,11 @@
 // Service Worker for Caching
 // ==========================
 
-const CACHE_NAME = 'shu-website-v3';
+const CACHE_NAME = 'shu-website-v4';
 const urlsToCache = [
     '/',
     '/index.html',
+    '/offline.html',
     '/css/style.css',
     '/js/main.js',
     '/js/performance.js',
@@ -57,7 +58,10 @@ self.addEventListener('fetch', event => {
                     return response;
                 })
                 .catch(() => {
-                    return caches.match(request);
+                    return caches.match(request).then(cached => {
+                        if (cached) return cached;
+                        return caches.match('/offline.html');
+                    });
                 })
         );
         return;

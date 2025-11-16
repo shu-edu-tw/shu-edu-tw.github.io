@@ -1,81 +1,112 @@
 #!/usr/bin/env python3
-"""
-Light SEO checks:
-- Each HTML has canonical tag and correct domain/path
-- No stray 'https://shu-edu-tw.github.io/home' references
-- OG url matches canonical (if present)
-Prints issues and exits non-zero if any are found.
-"""
-from __future__ import annotations
-from pathlib import Path
+import os
 import re
+import sys
+from urllib.parse import urlparse
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE = 'https://shu-edu-tw.github.io'
-HTML_GLOBS = [
-    ROOT / 'index.html',
-    *(ROOT / 'pages').glob('*.html'),
-    *(ROOT / 'news').glob('*.html'),
-]
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SITE_ORIGIN = "https://shu-edu-tw.github.io"
 
-issues: list[str] = []
-
-HOME_BAD_RE = re.compile(r'https://shu-edu-tw\.github\.io/home', re.I)
-CANON_RE = re.compile(
-    r'<link[^>]+rel=["\']canonical["\']'
-    r'[^>]*href=["\']([^"\']+)["\']',
+HTML_GLOB_DIRS = [ROOT]
+RE_TITLE = re.compile(r"<title>(.*?)</title>", re.I | re.S)
+RE_META_DESC = re.compile(
+    r"<meta[^>]*name=[\"']description[\"'][^>]*content=[\"']([^\"']+)[\"'][^>]*>",
     re.I,
 )
-OG_URL_RE = re.compile(
-    r'<meta[^>]+property=["\']og:url["\']'
-    r'[^>]*content=["\']([^"\']+)["\']',
+RE_CANONICAL = re.compile(
+    r"<link[^>]*rel=[\"']canonical[\"'][^>]*href=[\"']([^\"']+)[\"'][^>]*>",
+    re.I,
+)
+RE_OG_URL = re.compile(
+    r"<meta[^>]*property=[\"']og:url[\"'][^>]*content=[\"']([^\"']+)[\"'][^>]*>",
+    re.I,
+)
+RE_OG_IMAGE = re.compile(
+    r"<meta[^>]*property=[\"']og:image[\"'][^>]*content=[\"']([^\"']+)[\"'][^>]*>",
+    re.I,
+)
+RE_OG_SITE = re.compile(
+    r"<meta[^>]*property=[\"']og:site_name[\"'][^>]*content=[\"']([^\"']+)[\"'][^>]*>",
+    re.I,
+)
+RE_OG_LOCALE = re.compile(
+    r"<meta[^>]*property=[\"']og:locale[\"'][^>]*content=[\"']([^\"']+)[\"'][^>]*>",
+    re.I,
+)
+RE_TW_CARD = re.compile(
+    r"<meta[^>]*name=[\"']twitter:card[\"'][^>]*content=[\"']([^\"']+)[\"'][^>]*>",
     re.I,
 )
 
-for html in HTML_GLOBS:
-    if not html.exists():
-        continue
-    text = html.read_text(encoding='utf-8', errors='ignore')
+issues = []
+checked = 0
 
-    # 1) stray /home
-    if HOME_BAD_RE.search(text):
-        issues.append(f"[STRAY /home] {html}")
+for base, _, files in os.walk(ROOT):
+    for fn in files:
+        if not fn.endswith('.html'):
+            continue
+        path = os.path.join(base, fn)
+        rel = os.path.relpath(path, ROOT)
+        # Skip non-public or special-purpose files
+        if rel in {
+            'offline.html',
+            '404.html',
+            'google-site-verification-template.html',
+        }:
+            continue
+        if fn.startswith('google') and fn.endswith('.html'):
+            # actual Google verification files
+            continue
+        if rel.startswith(('deploy_bundle/', '.git/', 'scripts/')):
+            continue
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            html = f.read()
+        checked += 1
+        title = RE_TITLE.search(html)
+        desc = RE_META_DESC.search(html)
+        cano = RE_CANONICAL.search(html)
+        ogu = RE_OG_URL.search(html)
+        ogi = RE_OG_IMAGE.search(html)
+        ogs = RE_OG_SITE.search(html)
+        ogl = RE_OG_LOCALE.search(html)
+        twc = RE_TW_CARD.search(html)
 
-    # 2) canonical presence & correctness
-    m = CANON_RE.search(text)
-    if not m:
-        issues.append(f"[MISSING CANONICAL] {html}")
-    else:
-        canon = m.group(1)
-        if not canon.startswith(BASE):
-            issues.append(f"[CANONICAL DOMAIN] {html} -> {canon}")
-        # basic path heuristic: index at root; others under /pages/ or /news/
-        if html.name == 'index.html' and not canon.endswith('/'):
-            issues.append(
-                f"[CANONICAL INDEX TRAILING SLASH] {html} -> {canon}"
-            )
-        if html.parent.name == 'pages' and f"{BASE}/pages/" not in canon:
-            issues.append(f"[CANONICAL PATH] {html} -> {canon}")
-        if html.parent.name == 'news' and f"{BASE}/news/" not in canon:
-            issues.append(f"[CANONICAL PATH] {html} -> {canon}")
+        def add(msg): issues.append(f"{rel}: {msg}")
 
-    # 3) og:url matches canonical (if both exist)
-    ogm = OG_URL_RE.search(text)
-    if m and ogm:
-        og = ogm.group(1)
-        canon = m.group(1)
-        if og != canon:
-            issues.append(
-                f"[OG URL != CANONICAL] {html} -> og:{og} vs canon:{canon}"
-            )
+        if not title:
+            add('missing <title>')
+        if not desc:
+            add('missing meta description')
+        if not cano:
+            add('missing canonical link')
+        if not ogu:
+            add('missing og:url')
+        if not ogi:
+            add('missing og:image')
+        if not ogs:
+            add('missing og:site_name')
+        if not ogl:
+            add('missing og:locale')
+        if not twc:
+            add('missing twitter:card')
 
+        # canonical and og:url should be absolute and same-origin
+        for tag, m in [('canonical', cano), ('og:url', ogu)]:
+            if m:
+                href = m.group(1)
+                if not href.startswith('http'):
+                    add(f'{tag} not absolute: {href}')
+                else:
+                    u = urlparse(href)
+                    origin = f"{u.scheme}://{u.netloc}"
+                    if origin != SITE_ORIGIN:
+                        add(f'{tag} wrong origin: {href}')
+
+print(f"Checked HTML files: {checked}")
 if issues:
-    print('SEO validation found issues:')
+    print("SEO issues found:")
     for i in issues:
-        print(' -', i)
-    raise SystemExit(1)
+        print(" -", i)
+    sys.exit(1)
 else:
-    print(
-        'SEO validation OK: canonical/OG paths consistent and no stray '
-        '/home references.'
-    )
+    print("All SEO checks passed.")

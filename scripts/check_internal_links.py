@@ -1,94 +1,84 @@
 #!/usr/bin/env python3
-"""
-Check internal anchor href/src references across HTML files:
-- <a href> for same-site links (/, ./, ../, /pages, /news, absolute base)
-- <img src> references
-Reports missing targets. Exits non-zero if any are found.
-"""
-from __future__ import annotations
-from pathlib import Path
+import os
 import re
- 
+import sys
 
-ROOT = Path(__file__).resolve().parents[1]
-BASE = 'https://shu-edu-tw.github.io'
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SITE_ORIGIN = "https://shu-edu-tw.github.io"
 
-HTML_FILES = [
-    ROOT / 'index.html',
-    *(ROOT / 'pages').glob('*.html'),
-    *(ROOT / 'news').glob('*.html'),
-]
+RE_LINK = re.compile(r"<a[^>]+href=\"([^\"]+)\"", re.I)
+RE_IMG = re.compile(r"<img[^>]+src=\"([^\"]+)\"", re.I)
 
-HREF_RE = re.compile(r'<a\s+[^>]*href=["\']([^"\'#]+)["\']', re.I)
-SRC_RE = re.compile(r'<img\s+[^>]*src=["\']([^"\']+)["\']', re.I)
+problems = []
+scanned = 0
 
-missing: list[str] = []
+# Helpers
 
-
-def to_local_path(url: str, base_file: Path) -> Path | None:
-    if url.startswith('mailto:') or url.startswith('tel:'):
-        return None
-    if url.startswith('#'):
-        return None
-    if url.startswith('http://') or url.startswith('https://'):
-        # only handle same-origin
-        if url.startswith(BASE + '/'):
-            path = url[len(BASE):]
-        else:
-            return None
-    else:
-        path = url
-    # map root or directory-ending to index.html
-    if path == '' or path.endswith('/'):
-        path = path + 'index.html'
-    # absolute-rooted path
-    if path.startswith('/'):
-        return ROOT / path.lstrip('/')
-    # relative path: resolve against current file's directory
-    return (base_file.parent / path).resolve()
+def is_external(url: str) -> bool:
+    return (
+        url.startswith('http://') or url.startswith('https://') or
+        url.startswith('mailto:') or url.startswith('tel:')
+    )
 
 
-for html in HTML_FILES:
-    if not html.exists():
+def to_local_path(relpath: str, file_dir: str) -> str:
+    # Map absolute site URLs to local
+    if relpath.startswith(SITE_ORIGIN):
+        rel = relpath[len(SITE_ORIGIN):]
+        if not rel.startswith('/'):
+            rel = '/' + rel
+        return os.path.join(ROOT, rel.lstrip('/'))
+    # Protocol-relative // or absolute path
+    if relpath.startswith('//'):
+        return ''  # treat as external
+    if relpath.startswith('/'):
+        return os.path.join(ROOT, relpath.lstrip('/'))
+    # Relative to current file
+    return os.path.normpath(os.path.join(file_dir, relpath))
+
+
+for base, _, files in os.walk(ROOT):
+    relbase = os.path.relpath(base, ROOT)
+    if relbase.startswith(('deploy_bundle', '.git', 'scripts')):
         continue
-    text = html.read_text(encoding='utf-8', errors='ignore')
-    for m in HREF_RE.finditer(text):
-        href = m.group(1)
-        p = to_local_path(href, html)
-        if p is None:
+    for fn in files:
+        if not fn.endswith('.html'):
             continue
-        if not p.exists():
-            missing.append(
-                f"[A HREF] {html.relative_to(ROOT)} -> {href} -> missing "
-                f"{p.relative_to(ROOT)}"
-            )
-    for m in SRC_RE.finditer(text):
-        src = m.group(1)
-        p = to_local_path(src, html)
-        if p is None:
-            # external absolute images allowed if same origin not required
-            if src.startswith('http://') or src.startswith('https://'):
-                if src.startswith(BASE + '/'):
-                    # same-origin external; compute path and check
-                    up = to_local_path(src, html)
-                    if up and not up.exists():
-                        msg = (
-                            f"[IMG SRC] {html.relative_to(ROOT)} -> {src} -> "
-                            f"missing {up.relative_to(ROOT)}"
-                        )
-                        missing.append(msg)
-            continue
-        if not p.exists():
-            msg = (
-                f"[IMG SRC] {html.relative_to(ROOT)} -> {src} -> "
-                f"missing {p.relative_to(ROOT)}"
-            )
-            missing.append(msg)
+        path = os.path.join(base, fn)
+        file_dir = os.path.dirname(path)
+        rel = os.path.relpath(path, ROOT)
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            html = f.read()
+        scanned += 1
 
-if missing:
-    print('Internal link check found issues:')
-    for i in missing:
-        print(' -', i)
-    raise SystemExit(1)
+        links = RE_LINK.findall(html)
+        imgs = RE_IMG.findall(html)
+
+        for href in links:
+            if is_external(href) or href.startswith('#'):
+                continue
+            if '#' in href:
+                href = href.split('#', 1)[0]
+            local = to_local_path(href, file_dir)
+            if not local:
+                continue
+            if not os.path.exists(local):
+                problems.append(f"{rel}: broken link -> {href}")
+
+        for src in imgs:
+            if is_external(src):
+                continue
+            local = to_local_path(src, file_dir)
+            if not local:
+                continue
+            if not os.path.exists(local):
+                problems.append(f"{rel}: missing image -> {src}")
+
+print(f"Scanned HTML files: {scanned}")
+if problems:
+    print("Broken internals:")
+    for p in problems:
+        print(" -", p)
+    sys.exit(1)
 else:
-    print('Internal link check OK: no missing internal anchors or images.')
+    print("All internal links and images OK.")
